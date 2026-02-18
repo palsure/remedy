@@ -1,0 +1,8 @@
+services:
+  remedy:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - YOU_API_KEY=${YOU_API_KEY}
+    restart: unless-stopped
