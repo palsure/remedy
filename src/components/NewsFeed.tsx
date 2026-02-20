@@ -105,7 +105,7 @@ export default function NewsFeed() {
           </span>
         </div>
         <button
-          onClick={fetchNews}
+          onClick={() => fetchNews(true)}
           disabled={loading}
           className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600 disabled:opacity-40 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
           aria-label="Refresh news"
