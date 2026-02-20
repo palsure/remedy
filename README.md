@@ -1,6 +1,6 @@
-# Remedy — AI Health Research Agent
+# Remedy: AI Health Research Agent
 
-Remedy grounds health answers in **live web data** and returns **citation-backed reports** using You.com's Search, Contents, Live News, and Advanced Agents APIs. It combines creativity + reasoning + real data: an AI research partner that plans multi-step workflows, performs live research, explains complex health topics, and delivers structured evidence — with pros/cons, recommendations, and full citations. The reasoning process is visible in real-time.
+Remedy grounds health answers in **live web data** and returns **citation-backed reports** using You.com's Search, Contents, Live News, and Advanced Agents APIs. It combines creativity + reasoning + real data: an AI research partner that plans multi-step workflows, performs live research, explains complex health topics, and delivers structured evidence with pros/cons, recommendations, and full citations. The reasoning process is visible in real-time.
 
 ---
 
