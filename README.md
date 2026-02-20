@@ -4,21 +4,6 @@ Remedy grounds health answers in **live web data** and returns **citation-backed
 
 ---
 
-## What Makes Remedy Different
-
-Remedy is not just another medical chatbot. It is built for **evidence traceability**, **explainable reasoning**, and **clinical-grade output**:
-
-- **Clinical Risk Engine** — Quantified interaction risk score (0–100) using evidence weighting, study size, and recency.
-- **Multi-agent pipeline** — Research Agent → Verifier Agent → Safety Agent → Bias Auditor; each step is visible in the UI.
-- **Source hierarchy** — FDA label > RCT > Meta-analysis > Observational > Blog; every citation is tiered.
-- **Contraindication alerts** — Edge cases (pregnancy, pediatrics, polypharmacy, Crohn's, etc.) are called out when relevant.
-- **Conflicting evidence** — When two sources disagree, the report highlights the conflict.
-- **Reasoning checkpoints** — See which sources were rejected and why (reproducible query log).
-- **Live / Offline Mode** — Switch between live You.com API fetches and cached data directly from the header; configurable refresh interval minimizes API usage.
-- **Smart localStorage Cache** — Every API response is cached; Offline mode serves up to 7-day-old cached data; Live mode skips fresh cache to avoid redundant calls.
-
----
-
 ## Full Features
 
 ### Research (Research tab)
@@ -109,19 +94,6 @@ Remedy uses **You.com Search, Contents, Advanced Agents, and Live News**:
 - **Events** — Used for the **Events** page via the Search API with category-specific queries; returns upcoming health/fitness/wellness events with cited source links
 - **Contents API** (`POST /v1/contents`) — Extract clean markdown from authoritative medical URLs for deep analysis
 - **Advanced Agents API** (`POST /v1/agents/runs`) — Custom reasoning agent with **research** and **compute** tools; multi-step workflows, live research, and explained reasoning
-
----
-
-## Hackathon tracks Remedy covers
-
-| Track | How Remedy uses it |
-|-------|--------------------|
-| **AI-Powered Search Assistant** | Grounds every answer in live web data via the Search API; returns citation-backed answers for LLM grounding and real-time Q&A. |
-| **Research Copilot** | Combines Agents API with Search and Compute tools to summarize, analyze, and cite papers, news, and medical sources—like an AI research partner. |
-| **Insight Dashboard** | Uses Search, Live News, and Contents to track emerging health trends and insights; News page with category/time filters and AI summary. |
-| **Custom Reasoning Agent** | Builds an agent that plans multi-step workflows, performs live research, and explains complex health topics using the Advanced Agents API. |
-| **Live News Analyzer** | Pulls and summarizes latest health/medical headlines with the Live News API; auto-generated AI summary for a daily health briefing. |
-| **Knowledge Copilot** | Chat assistant that answers any health question with up-to-date information, citations, and reasoning powered by You.com's APIs. |
 
 ---
 
@@ -313,21 +285,52 @@ src/
 
 ## Tech Stack
 
+### Frontend
+
 | Layer | Technologies |
 |-------|--------------|
-| **Framework** | Next.js 16, React 19, TypeScript |
+| **Framework** | Next.js 16 (App Router), React 19, TypeScript |
 | **Styling** | Tailwind CSS v4, class-based dark mode |
-| **Animations** | Framer Motion (logo, steps, modals, list) |
+| **Animations** | Framer Motion (logo, step timeline, modals) |
 | **Markdown** | react-markdown, remark-gfm |
 | **Icons** | Lucide React |
-| **Streaming** | Server-Sent Events (SSE) |
-| **State** | React Context (auth, theme, online mode), localStorage |
-| **Caching** | Custom localStorage cache (`api-cache.ts`) with timestamps and TTL |
-| **Deployment** | Docker (multi-stage), Vercel |
+| **State** | React Context API — `AuthContext`, `ThemeContext`, `OnlineModeContext` |
+| **Caching** | Custom `localStorage` cache (`api-cache.ts`) — per-resource cache keys, timestamps, configurable TTL, 7-day offline fallback |
+| **Streaming** | Server-Sent Events (SSE) for real-time agent step + report streaming |
+
+### Backend (Next.js API Routes)
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/research` | `GET` (SSE) | Full research pipeline — plan → search → read → reason → structured report, streamed as SSE events |
+| `/api/news` | `GET` | Fetches latest health news articles from You.com Search API |
+| `/api/news/full` | `GET` | Fetches articles + generates AI summary via You.com Agents API |
+| `/api/goals` | `GET` | Fetches AI-powered tips for a goal using You.com Search + Contents APIs |
+| `/api/events` | `GET` | Fetches upcoming health, fitness, and wellness events from You.com Search API |
+
+All API routes honour the `X-Offline-Mode: true` request header — when set, they return immediately with an `offline: true` flag and make zero calls to You.com.
+
+### You.com APIs
+
+| API | Endpoint | Used For |
+|-----|----------|----------|
+| **Search API** | `GET /v1/search` | Medical evidence gathering, news articles, events, goal tips — with `freshness`, `livecrawl`, and `count` options |
+| **Contents API** | `POST /v1/contents` | Extracts clean markdown from authoritative medical URLs (NIH, PubMed, Mayo Clinic, FDA) for deep evidence reading |
+| **Advanced Agents API** | `POST /v1/agents/runs` | Custom reasoning agent with `research` + `compute` tools; multi-step planning, live research, and explained reasoning |
+| **Live News** | `GET /v1/search` (livecrawl: news) | Powers the News page — latest health, medical, fitness, diet, and wellness headlines with category + time-range filters |
+
+### Infrastructure & Deployment
+
+| Layer | Technologies |
+|-------|--------------|
+| **Runtime** | Node.js 20+ |
+| **Containerisation** | Docker (multi-stage build), Docker Compose with `YOU_API_KEY` env pass-through |
+| **Hosting** | Vercel (serverless, edge-compatible API routes) |
+| **Environment** | `.env` / `.env.local` — single `YOU_API_KEY` variable required |
 
 ---
 
-## Demo Flow for Judges
+## Demo Flow
 
 1. **Open the app** — note the `Live | Offline` control in the header. Mode and refresh interval persist across reloads.
 2. **Start research** — ask a supplement or interaction question (e.g. "What are the benefits of omega-3 fatty acids?").
