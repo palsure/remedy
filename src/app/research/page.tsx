@@ -17,10 +17,17 @@ import {
   ThumbsUp,
   ThumbsDown,
   Lightbulb,
+  Download,
+  AlertTriangle,
+  GitBranch,
 } from "lucide-react";
+import SafetyBanner from "@/components/SafetyBanner";
+import CollapsibleSection from "@/components/CollapsibleSection";
+import SourceTierBadge from "@/components/SourceTierBadge";
 import ChatInterface from "@/components/ChatInterface";
 import { HISTORY_KEY, HISTORY_EVENT } from "@/components/ChatInterface";
 import type { ResearchEntry } from "@/components/ChatInterface";
+import { formatReportAnalysis } from "@/lib/utils";
 
 function loadHistory(): ResearchEntry[] {
   if (typeof window === "undefined") return [];
@@ -116,11 +123,12 @@ function extractProsCons(analysis: string): {
   return { pros, cons, recommendations };
 }
 
+type ReportViewMode = "patient" | "doctor";
+
 export default function ResearchPage() {
   const [history, setHistory] = useState<ResearchEntry[]>([]);
-  const [selectedEntry, setSelectedEntry] = useState<ResearchEntry | null>(
-    null
-  );
+  const [selectedEntry, setSelectedEntry] = useState<ResearchEntry | null>(null);
+  const [reportViewMode, setReportViewMode] = useState<ReportViewMode>("patient");
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -128,6 +136,10 @@ export default function ResearchPage() {
     window.addEventListener(HISTORY_EVENT, handler);
     return () => window.removeEventListener(HISTORY_EVENT, handler);
   }, []);
+
+  useEffect(() => {
+    if (selectedEntry) setReportViewMode("patient");
+  }, [selectedEntry?.id]);
 
   const deleteEntry = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -141,6 +153,29 @@ export default function ResearchPage() {
     setHistory([]);
     localStorage.removeItem(HISTORY_KEY);
     setSelectedEntry(null);
+  };
+
+  const exportReport = (entry: ResearchEntry) => {
+    const lines = [
+      `Remedy — Research Report`,
+      `Question: ${entry.question}`,
+      `Safety: ${entry.safetyRating} | Evidence: ${entry.evidenceLevel}${entry.riskScore != null ? ` | Risk score: ${entry.riskScore}/100` : ""}`,
+      ``,
+      `Summary: ${entry.summary}`,
+      ``,
+      entry.analysis,
+      ``,
+      `Sources:`,
+      ...(entry.citations || []).map((c) => `- ${c.title} (${c.url})`),
+    ];
+    const text = lines.join("\n");
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `remedy-report-${entry.id.slice(0, 8)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -326,24 +361,79 @@ export default function ResearchPage() {
                       <FlaskConical className="h-3 w-3" />
                       {selectedEntry.evidenceLevel} evidence
                     </span>
+                    {selectedEntry.riskScore != null && (
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
+                        Risk score: {selectedEntry.riskScore}/100
+                      </span>
+                    )}
                     <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
                       {timeAgo(selectedEntry.timestamp)}
                     </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedEntry(null)}
-                  className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-700">
+                    <button
+                      onClick={() => setReportViewMode("patient")}
+                      className={`rounded-l-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        reportViewMode === "patient"
+                          ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
+                          : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                      }`}
+                      title="Plain language + action steps"
+                    >
+                      Patient
+                    </button>
+                    <button
+                      onClick={() => setReportViewMode("doctor")}
+                      className={`rounded-r-md border-l border-zinc-200 px-2 py-1 text-[11px] font-medium transition-colors dark:border-zinc-700 ${
+                        reportViewMode === "doctor"
+                          ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
+                          : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                      }`}
+                      title="Clinical summary format"
+                    >
+                      Doctor
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => exportReport(selectedEntry)}
+                    className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-teal-600 dark:hover:bg-zinc-800 dark:hover:text-teal-400"
+                    title="Export report (physician share format)"
+                  >
+                    <Download className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setSelectedEntry(null)}
+                    className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Modal body */}
               <div className="flex-1 overflow-y-auto px-6 py-4">
+                {selectedEntry.creditsUnavailable && (
+                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 dark:border-amber-700 dark:bg-amber-950/40">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div className="text-sm text-amber-800 dark:text-amber-200">
+                      <p className="font-semibold">Unable to use You.com</p>
+                      <p className="mt-0.5 text-xs">
+                        API credits were not available for this research. This response is limited and was not generated from live You.com search or sources.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {/* Safety banner */}
+                <SafetyBanner
+                  rating={selectedEntry.safetyRating as "safe" | "caution" | "warning" | "danger" | "unknown"}
+                  riskScore={selectedEntry.riskScore}
+                />
+
                 {/* Summary */}
                 {selectedEntry.summary && (
-                  <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-4 dark:border-teal-900/30 dark:bg-teal-950/20">
+                  <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50/50 p-4 dark:border-teal-900/30 dark:bg-teal-950/20">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-teal-700 dark:text-teal-300">
                       Summary
                     </h3>
@@ -353,52 +443,138 @@ export default function ResearchPage() {
                   </div>
                 )}
 
-                {/* Detailed Analysis */}
-                {selectedEntry.analysis && (
-                  <div className="mt-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                      Detailed Analysis
+                {/* Contraindication alerts */}
+                {selectedEntry.contraindicationAlerts && selectedEntry.contraindicationAlerts.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800/50 dark:bg-amber-950/20">
+                    <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Contraindication alerts
                     </h3>
-                    <div className="prose prose-sm mt-2 max-w-none text-zinc-700 dark:text-zinc-300 prose-headings:text-zinc-900 prose-headings:dark:text-zinc-100 prose-a:text-teal-600 prose-a:dark:text-teal-400 prose-strong:text-zinc-900 prose-strong:dark:text-zinc-100">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {selectedEntry.analysis}
-                      </ReactMarkdown>
-                    </div>
+                    <ul className="mt-2 space-y-1.5 text-xs text-amber-800 dark:text-amber-300">
+                      {selectedEntry.contraindicationAlerts.map((a, i) => (
+                        <li key={i}>
+                          <strong>{a.population}:</strong> {a.summary}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
-                {/* Sources */}
-                {selectedEntry.citations?.length > 0 && (
-                  <div className="mt-6">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                      Sources ({selectedEntry.citations.length})
+                {/* Conflicting evidence */}
+                {selectedEntry.conflictingEvidence && selectedEntry.conflictingEvidence.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50/50 p-3 dark:border-orange-800/50 dark:bg-orange-950/20">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-orange-700 dark:text-orange-400">
+                      Conflicting evidence
                     </h3>
-                    <div className="mt-2 space-y-2">
-                      {selectedEntry.citations.map((c, i) => (
-                        <a
-                          key={i}
-                          href={c.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group flex items-start gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors hover:border-teal-300 hover:bg-white dark:border-zinc-700/50 dark:bg-zinc-800/50 dark:hover:border-teal-800 dark:hover:bg-zinc-800"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium text-zinc-900 group-hover:text-teal-700 dark:text-zinc-100 dark:group-hover:text-teal-300">
-                              {c.title}
-                            </p>
-                            {c.snippet && (
-                              <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-                                {c.snippet}
-                              </p>
-                            )}
-                            <span className="mt-1 inline-block text-[10px] text-zinc-400 dark:text-zinc-500">
-                              {extractDomain(c.url)}
-                            </span>
-                          </div>
-                          <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-300 transition-colors group-hover:text-teal-500 dark:text-zinc-600" />
-                        </a>
+                    <ul className="mt-2 space-y-2 text-xs text-orange-800 dark:text-orange-300">
+                      {selectedEntry.conflictingEvidence.map((c, i) => (
+                        <li key={i}>
+                          &ldquo;{c.claim_a}&rdquo; vs &ldquo;{c.claim_b}&rdquo;
+                        </li>
                       ))}
-                    </div>
+                    </ul>
+                  </div>
+                )}
+
+                {/* Disclaimer extras */}
+                {selectedEntry.disclaimerExtras && selectedEntry.disclaimerExtras.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5 dark:border-zinc-700 dark:bg-zinc-800/50">
+                    {selectedEntry.disclaimerExtras.map((line, i) => (
+                      <p key={i} className="text-[11px] text-zinc-600 dark:text-zinc-400">
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Collapsible: Evidence / Analysis */}
+                {selectedEntry.analysis && (
+                  <div className="mt-4">
+                    <CollapsibleSection
+                      title={reportViewMode === "doctor" ? "Clinical summary" : "Detailed analysis (plain language)"}
+                      defaultOpen={true}
+                    >
+                      <div className="prose prose-sm max-w-none text-zinc-700 dark:text-zinc-300 prose-headings:text-zinc-900 prose-headings:dark:text-zinc-100 prose-a:text-teal-600 prose-a:dark:text-teal-400 prose-strong:text-zinc-900 prose-strong:dark:text-zinc-100">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {formatReportAnalysis(selectedEntry.analysis)}
+                        </ReactMarkdown>
+                      </div>
+                    </CollapsibleSection>
+                  </div>
+                )}
+
+                {/* Collapsible: Sources with hierarchy */}
+                {selectedEntry.citations?.length > 0 && (
+                  <div className="mt-4">
+                    <CollapsibleSection title={`Sources (${selectedEntry.citations.length}) — evidence hierarchy`} defaultOpen={true}>
+                      <div className="space-y-2">
+                        {selectedEntry.citations.map((c, i) => (
+                          <a
+                            key={i}
+                            href={c.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group flex items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 transition-colors hover:border-teal-300 hover:bg-white dark:border-zinc-700/50 dark:bg-zinc-800/50 dark:hover:border-teal-800 dark:hover:bg-zinc-800"
+                          >
+                            <SourceTierBadge tier={c.source_tier} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-zinc-900 group-hover:text-teal-700 dark:text-zinc-100 dark:group-hover:text-teal-300">
+                                {c.title}
+                              </p>
+                              {c.snippet && (
+                                <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+                                  {c.snippet}
+                                </p>
+                              )}
+                              <span className="mt-1 inline-block text-[10px] text-zinc-400 dark:text-zinc-500">
+                                {extractDomain(c.url)}
+                                {c.pubmed_id ? ` · PubMed ${c.pubmed_id}` : ""}
+                                {c.doi ? ` · DOI ${c.doi}` : ""}
+                              </span>
+                            </div>
+                            <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-300 transition-colors group-hover:text-teal-500 dark:text-zinc-600" />
+                          </a>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  </div>
+                )}
+
+                {/* Collapsible: Query log (reproducible research) */}
+                {selectedEntry.queryLog && selectedEntry.queryLog.length > 0 && (
+                  <div className="mt-4">
+                    <CollapsibleSection title="Research steps (query log)" defaultOpen={false}>
+                      <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                        <GitBranch className="h-3.5 w-3.5" />
+                        Reproducible: exact queries run for this report
+                      </div>
+                      <ol className="mt-2 list-inside list-decimal space-y-1 text-xs text-zinc-600 dark:text-zinc-300">
+                        {selectedEntry.queryLog.map((q, i) => (
+                          <li key={i}>{q}</li>
+                        ))}
+                      </ol>
+                    </CollapsibleSection>
+                  </div>
+                )}
+
+                {/* Rejected sources (reasoning checkpoints) */}
+                {selectedEntry.rejectedSources && selectedEntry.rejectedSources.length > 0 && (
+                  <div className="mt-4">
+                    <CollapsibleSection title="Sources not used (reasoning checkpoints)" defaultOpen={false}>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        These were considered but not in the top-priority read list.
+                      </p>
+                      <ul className="mt-2 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+                        {selectedEntry.rejectedSources.map((r, i) => (
+                          <li key={i}>
+                            <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline dark:text-teal-400">
+                              {r.title}
+                            </a>
+                            <span className="text-zinc-400"> — {r.reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CollapsibleSection>
                   </div>
                 )}
               </div>

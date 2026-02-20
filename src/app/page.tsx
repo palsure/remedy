@@ -20,6 +20,11 @@ import {
   MessageSquare,
   Target,
   LogIn,
+  BarChart3,
+  Calendar,
+  Wifi,
+  DatabaseZap,
+  RefreshCw,
 } from "lucide-react";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import { useAuth } from "@/lib/auth-context";
@@ -46,9 +51,9 @@ export default function LandingPage() {
             AI Health Research Agent
           </p>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-            Research medication interactions, supplement evidence, and wellness
-            claims with an AI agent that searches live medical sources, analyzes
-            the evidence, and delivers structured, citation-backed reports.
+            Research medication interactions, supplement evidence, and wellness claims with an AI agent that
+            searches live medical sources, analyzes evidence, and delivers citation-backed reports with
+            reasoning you can see — online or offline.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             {user ? (
@@ -123,18 +128,21 @@ export default function LandingPage() {
           <h2 className="text-center text-2xl font-bold text-zinc-900 dark:text-zinc-50">
             Key Features
           </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-zinc-500 dark:text-zinc-400">
+            Research health questions, track goals, and stay informed with full citations and recommendations.
+          </p>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[
               {
                 icon: Pill,
                 title: "Interaction Checker",
-                desc: "Check medication & supplement interactions with safety ratings and clinical evidence.",
+                desc: "Check medication and supplement interactions with safety ratings, pros/cons, and clinical evidence.",
                 color: "text-teal-600 bg-teal-100 dark:bg-teal-900/40 dark:text-teal-400",
               },
               {
                 icon: FlaskConical,
                 title: "Supplement Research",
-                desc: "Evidence-based analysis of supplements — does it actually work? What does the science say?",
+                desc: "Evidence-based analysis of supplements: efficacy, dosage, and what the science actually says.",
                 color: "text-blue-600 bg-blue-100 dark:bg-blue-900/40 dark:text-blue-400",
               },
               {
@@ -145,21 +153,57 @@ export default function LandingPage() {
               },
               {
                 icon: Target,
-                title: "Goal Tracking",
-                desc: "Set health goals and get AI-powered tips via live research to help you achieve them.",
+                title: "Health Goals & Tips",
+                desc: "Set goals, get AI-powered tips from live research, and track progress with notifications.",
                 color: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400",
               },
               {
                 icon: Newspaper,
-                title: "Live Health News",
-                desc: "Real-time health and medical news sidebar powered by You.com Search API.",
+                title: "News",
+                desc: "Live health news filtered by category and time range, with an AI summary of top headlines.",
                 color: "text-orange-600 bg-orange-100 dark:bg-orange-900/40 dark:text-orange-400",
               },
               {
+                icon: Calendar,
+                title: "Events",
+                desc: "Live health, fitness, and wellness events fetched from the web — each with a cited source link.",
+                color: "text-pink-600 bg-pink-100 dark:bg-pink-900/40 dark:text-pink-400",
+              },
+              {
+                icon: Wifi,
+                title: "Live / Offline Mode",
+                desc: "Switch between Live (You.com API with configurable refresh interval) and Offline (cached data) directly from the header.",
+                color: "text-cyan-600 bg-cyan-100 dark:bg-cyan-900/40 dark:text-cyan-400",
+              },
+              {
+                icon: DatabaseZap,
+                title: "Smart Caching",
+                desc: "Client-side localStorage cache stores API responses. Offline mode serves cached data; Live mode skips fresh cache, reducing API usage.",
+                color: "text-indigo-600 bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400",
+              },
+              {
+                icon: MessageSquare,
+                title: "Research Summary",
+                desc: "Sidebar lists past research. Clicking the Research tab resets the chat for a fresh session.",
+                color: "text-sky-600 bg-sky-100 dark:bg-sky-900/40 dark:text-sky-400",
+              },
+              {
                 icon: ShieldCheck,
-                title: "Safety & Evidence Ratings",
-                desc: "Every report includes a clear safety level and evidence quality assessment at a glance.",
+                title: "Safety & Evidence",
+                desc: "Every report shows safety level, evidence quality, structured pros/cons, and recommendations.",
                 color: "text-rose-600 bg-rose-100 dark:bg-rose-900/40 dark:text-rose-400",
+              },
+              {
+                icon: BarChart3,
+                title: "Clinical Risk & Pipeline",
+                desc: "Risk score (0–100), source hierarchy (FDA > RCT > meta), contraindication alerts, and explainable multi-agent pipeline.",
+                color: "text-amber-600 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-400",
+              },
+              {
+                icon: Stethoscope,
+                title: "Auth & Theme",
+                desc: "Demo login, light/dark mode toggle, and rolling medical disclaimer.",
+                color: "text-zinc-600 bg-zinc-100 dark:bg-zinc-700 dark:text-zinc-300",
               },
             ].map((feature, i) => {
               const Icon = feature.icon;
@@ -239,7 +283,7 @@ export default function LandingPage() {
                 step: 5,
                 icon: CheckCircle2,
                 title: "Report",
-                desc: "Delivers a structured health report with safety rating, evidence level, detailed analysis, and every claim linked to its source.",
+                desc: "Delivers a structured report with safety rating, evidence level, pros/cons, recommendations, and every claim linked to its source.",
                 api: null,
                 color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400",
                 line: "border-emerald-300 dark:border-emerald-700",
@@ -297,29 +341,36 @@ export default function LandingPage() {
             You.com API Integration
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Remedy uses all three You.com public APIs working in concert.
+            Remedy uses You.com Search, Live News, Contents, and Advanced Agents APIs — with smart caching to minimize API usage.
           </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               {
                 icon: Search,
                 name: "Search API",
                 endpoint: "GET /v1/search",
-                desc: "Evidence gathering with targeted medical queries, freshness filters, and livecrawl for enriched results.",
+                desc: "Evidence gathering for research, news, events, and goals — with targeted queries, freshness filters, and livecrawl.",
                 color: "border-t-blue-500",
+              },
+              {
+                icon: Newspaper,
+                name: "Live News & Events",
+                endpoint: "Search + livecrawl: news",
+                desc: "Powers the News and Events pages: latest health, fitness, and wellness stories and upcoming events — each with a cited source.",
+                color: "border-t-orange-500",
               },
               {
                 icon: FileText,
                 name: "Contents API",
                 endpoint: "POST /v1/contents",
-                desc: "Deep-reads authoritative medical sources by extracting clean markdown from NIH, Mayo Clinic, PubMed, and more.",
+                desc: "Deep-reads authoritative medical sources — NIH, Mayo Clinic, PubMed — extracting clean markdown for evidence analysis.",
                 color: "border-t-teal-500",
               },
               {
                 icon: Brain,
                 name: "Advanced Agents API",
                 endpoint: "POST /v1/agents/runs",
-                desc: "Core reasoning engine with research + compute tools for multi-step health analysis workflows.",
+                desc: "Custom reasoning agent with research + compute tools; multi-step workflows, live research, explained reasoning over SSE.",
                 color: "border-t-purple-500",
               },
             ].map((api, i) => {
@@ -348,6 +399,55 @@ export default function LandingPage() {
           </div>
         </motion.section>
 
+        {/* Live / Offline Mode */}
+        <motion.section className="mt-24" {...fadeIn}>
+          <h2 className="text-center text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+            Live / Offline Mode
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-zinc-500 dark:text-zinc-400">
+            Remedy is built to be API-efficient. Switch modes from the header at any time.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {[
+              {
+                icon: Wifi,
+                title: "Live Mode",
+                desc: "Fetches fresh data from You.com APIs. A configurable refresh interval (30 min, 1 hr, 2 hr, 4 hr) prevents redundant API calls when data is still fresh.",
+                color: "text-teal-600 bg-teal-100 dark:bg-teal-900/40 dark:text-teal-400",
+              },
+              {
+                icon: DatabaseZap,
+                title: "Smart Cache",
+                desc: "Every API response is stored in localStorage with a timestamp. In Live mode, fresh cache is served instantly. In Offline mode, any cached data up to 7 days old is used.",
+                color: "text-indigo-600 bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400",
+              },
+              {
+                icon: RefreshCw,
+                title: "Offline Mode",
+                desc: "No API calls are made. All pages — News, Events, Goals, Research — serve cached data. API routes return early with an offline flag to avoid backend hits.",
+                color: "text-zinc-600 bg-zinc-100 dark:bg-zinc-700 dark:text-zinc-300",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 + i * 0.1 }}
+                  className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/50 dark:bg-zinc-800/50"
+                >
+                  <div className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${item.color}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">{item.title}</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">{item.desc}</p>
+                </motion.div>
+              );
+            })}
+          </div>
+        </motion.section>
+
         {/* Tech Stack */}
         <motion.section className="mt-24" {...fadeIn}>
           <h2 className="text-center text-2xl font-bold text-zinc-900 dark:text-zinc-50">
@@ -361,6 +461,8 @@ export default function LandingPage() {
               "Tailwind CSS v4",
               "Framer Motion",
               "Server-Sent Events",
+              "React Context API",
+              "localStorage Cache",
               "Docker",
               "You.com APIs",
             ].map((tech) => (
@@ -381,8 +483,7 @@ export default function LandingPage() {
               Ready to research?
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500 dark:text-zinc-400">
-              Ask Remedy any health question and watch the AI agent think,
-              search, and reason — all in real-time with full citations.
+              Ask any health question and watch the agent think, search, and reason in real-time with full citations.
             </p>
             {user ? (
               <Link

@@ -10,8 +10,11 @@ const HEALTH_QUERIES = [
   "health wellness news today",
 ];
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    if (request.headers.get("x-offline-mode") === "true") {
+      return NextResponse.json({ articles: [], offline: true });
+    }
     if (!process.env.YOU_API_KEY) {
       return NextResponse.json(
         { error: "YOU_API_KEY is not configured" },
@@ -25,6 +28,7 @@ export async function GET() {
     const results = await youSearch(query, {
       count: 10,
       freshness: "week",
+      livecrawl: "news",
     });
 
     const articles: {

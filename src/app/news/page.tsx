@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Newspaper,
@@ -16,6 +16,8 @@ import {
   Brain,
   Layers,
 } from "lucide-react";
+import { useOnlineMode } from "@/lib/online-mode-context";
+import { cacheKeyNewsFull, getCached, setCached, isCacheFresh } from "@/lib/api-cache";
 
 interface NewsArticle {
   title: string;
@@ -61,7 +63,18 @@ function timeAgo(dateStr?: string): string {
   }
 }
 
+function formatTimeAgo(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hr ago`;
+  return `${Math.floor(hr / 24)} day${hr >= 48 ? "s" : ""} ago`;
+}
+
 export default function HealthNewsPage() {
+  const { mode, isOnline, refreshIntervalMs } = useOnlineMode();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(true);
@@ -70,39 +83,106 @@ export default function HealthNewsPage() {
   const [category, setCategory] = useState("all");
   const [days, setDays] = useState(7);
   const [showDayPicker, setShowDayPicker] = useState(false);
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const skipNextEffectRef = useRef(false);
 
-  const fetchNews = useCallback(
-    async (requestSummary = false) => {
+  function normalizeErrorMessage(apiError: string): string {
+    const lower = apiError.toLowerCase();
+    if (lower.includes("credits") || lower.includes("used up") || lower.includes("402")) {
+      return "You.com API credits not available. Please add credits in your You.com developer account.";
+    }
+    return apiError;
+  }
+
+  const cacheKey = cacheKeyNewsFull(category, days, true);
+
+  async function fetchNews(requestSummary: boolean, signal?: AbortSignal, forceRefresh = false) {
+    setError(null);
+    if (mode === "offline") {
+      const entry = getCached<{ articles: NewsArticle[]; summary: string }>(cacheKey);
+      const cached = entry?.data;
       setLoading(true);
-      setError(null);
-      if (requestSummary) setSummaryLoading(true);
-
-      try {
-        const params = new URLSearchParams({
-          category,
-          days: String(days),
-          summary: String(requestSummary),
-        });
-        const res = await fetch(`/api/news/full?${params}`);
-        if (!res.ok) throw new Error("Failed to fetch news");
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setArticles(data.articles || []);
-        if (data.summary) setSummary(data.summary);
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-        setSummaryLoading(false);
+      if (cached?.articles && entry) {
+        setArticles(cached.articles);
+        setSummary(cached.summary || "");
+        setCachedAt(entry.timestamp);
+      } else {
+        setArticles([]);
+        setSummary("");
+        setError("Offline mode — no cached data for this filter. Switch to Live and load once to cache.");
       }
-    },
-    [category, days]
-  );
+      setLoading(false);
+      setSummaryLoading(false);
+      return;
+    }
+
+    const entry = getCached<{ articles: NewsArticle[]; summary: string }>(cacheKey);
+    if (!forceRefresh && isCacheFresh(entry, refreshIntervalMs) && entry?.data) {
+      setArticles((entry.data as { articles: NewsArticle[] }).articles || []);
+      setSummary((entry.data as { summary: string }).summary || "");
+      setCachedAt(entry.timestamp);
+      setLoading(false);
+      setSummaryLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    if (requestSummary) setSummaryLoading(true);
+
+    try {
+      const params = new URLSearchParams({
+        category,
+        days: String(days),
+        summary: String(requestSummary),
+      });
+      const res = await fetch(`/api/news/full?${params}`, {
+        signal,
+        headers: { ...(isOnline ? {} : { "X-Offline-Mode": "true" }) },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = typeof data?.error === "string" ? data.error : "Failed to fetch news";
+        throw new Error(normalizeErrorMessage(msg));
+      }
+      if (data.error) throw new Error(normalizeErrorMessage(data.error));
+      const list = data.articles || [];
+      const sum = data.summary || "";
+      setArticles(list);
+      setSummary(sum);
+      setCachedAt(Date.now());
+      setCached(cacheKey, { articles: list, summary: sum });
+      if (data.offline && !list.length) setError("Offline mode is on. Switch to Live in the header to fetch news.");
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      setError((err as Error).message);
+      if (entry?.data) {
+        const d = entry.data as { articles: NewsArticle[]; summary: string };
+        setArticles(d.articles || []);
+        setSummary(d.summary || "");
+        setCachedAt(entry.timestamp);
+      }
+    } finally {
+      setLoading(false);
+      setSummaryLoading(false);
+    }
+  }
 
   useEffect(() => {
+    if (skipNextEffectRef.current) {
+      skipNextEffectRef.current = false;
+      return;
+    }
     setSummary("");
-    fetchNews(true);
-  }, [fetchNews]);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    fetchNews(true, controller.signal);
+    return () => {
+      skipNextEffectRef.current = true;
+      abortRef.current = null;
+    };
+  }, [category, days, mode, refreshIntervalMs]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -118,8 +198,14 @@ export default function HealthNewsPage() {
                 Health News
               </h1>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Latest stories powered by You.com Search API
+                Live News Analyzer · Track emerging trends · AI daily briefing powered by You.com
               </p>
+              {cachedAt != null && (
+                <span className="mt-1 inline-block rounded bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                  {mode === "offline" ? "Offline · cached " : "Cached "}
+                  {formatTimeAgo(Date.now() - cachedAt)}
+                </span>
+              )}
             </div>
           </div>
 
@@ -165,7 +251,7 @@ export default function HealthNewsPage() {
             </div>
 
             <button
-              onClick={() => fetchNews(true)}
+              onClick={() => fetchNews(true, undefined, true)}
               disabled={loading}
               className="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:border-teal-300 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-teal-700"
             >
@@ -212,7 +298,7 @@ export default function HealthNewsPage() {
               <div className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-4 dark:border-teal-900/30 dark:from-teal-950/20 dark:to-zinc-900/50">
                 <div className="flex items-center gap-2 text-xs font-semibold text-teal-700 dark:text-teal-300">
                   <Sparkles className="h-3.5 w-3.5" />
-                  AI News Summary
+                  AI daily briefing
                 </div>
                 {summaryLoading && !summary ? (
                   <div className="mt-2 space-y-2">
@@ -336,10 +422,7 @@ export default function HealthNewsPage() {
         {/* Results count */}
         {!loading && articles.length > 0 && (
           <p className="mt-6 pb-4 text-center text-[11px] text-zinc-400 dark:text-zinc-500">
-            Showing {articles.length} articles ·{" "}
-            {CATEGORIES.find((c) => c.id === category)?.label} ·{" "}
-            {DAY_OPTIONS.find((d) => d.value === days)?.label} · Powered by
-            You.com Search API
+            Insight dashboard: {articles.length} articles · {CATEGORIES.find((c) => c.id === category)?.label} · {DAY_OPTIONS.find((d) => d.value === days)?.label} · You.com Live News
           </p>
         )}
       </div>

@@ -9,6 +9,8 @@ import {
   AlertCircle,
   Clock,
 } from "lucide-react";
+import { useOnlineMode } from "@/lib/online-mode-context";
+import { cacheKeyNews, getCached, setCached, isCacheFresh } from "@/lib/api-cache";
 
 interface NewsArticle {
   title: string;
@@ -43,27 +45,51 @@ export default function NewsFeed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchNews = useCallback(async () => {
-    setLoading(true);
+  const { mode, isOnline, refreshIntervalMs } = useOnlineMode();
+  const fetchNews = useCallback(async (forceRefresh = false) => {
+    const key = cacheKeyNews();
     setError(null);
+    if (mode === "offline") {
+      setLoading(true);
+      const entry = getCached<NewsArticle[]>(key);
+      if (entry?.data) {
+        setArticles(Array.isArray(entry.data) ? entry.data : []);
+      } else {
+        setArticles([]);
+      }
+      setLoading(false);
+      return;
+    }
+    const entry = getCached<NewsArticle[]>(key);
+    if (!forceRefresh && isCacheFresh(entry, refreshIntervalMs) && entry?.data && Array.isArray(entry.data)) {
+      setArticles(entry.data);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     try {
-      const res = await fetch("/api/news");
+      const res = await fetch("/api/news", {
+        headers: { ...(isOnline ? {} : { "X-Offline-Mode": "true" }) },
+      });
       if (!res.ok) throw new Error("Failed to fetch news");
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setArticles(data.articles || []);
+      const list = data.articles || [];
+      setArticles(list);
+      setCached(key, list);
     } catch (err) {
       setError((err as Error).message);
+      if (entry?.data && Array.isArray(entry.data)) setArticles(entry.data);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode, isOnline, refreshIntervalMs]);
 
   useEffect(() => {
     fetchNews();
-    const interval = setInterval(fetchNews, 5 * 60 * 1000);
+    const interval = setInterval(() => fetchNews(), refreshIntervalMs);
     return () => clearInterval(interval);
-  }, [fetchNews]);
+  }, [fetchNews, refreshIntervalMs]);
 
   return (
     <aside className="flex h-full flex-col border-l border-zinc-200 bg-zinc-50/50 dark:border-zinc-800 dark:bg-zinc-900/50">
@@ -192,7 +218,7 @@ export default function NewsFeed() {
       {/* Footer */}
       <div className="border-t border-zinc-200 px-4 py-2 dark:border-zinc-800">
         <p className="text-center text-[10px] text-zinc-400 dark:text-zinc-500">
-          Powered by You.com Search API · Auto-refreshes every 5 min
+          Powered by You.com Live News · Auto-refreshes every 5 min
         </p>
       </div>
     </aside>

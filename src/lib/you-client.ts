@@ -16,6 +16,25 @@ function getApiKey(): string {
   return key;
 }
 
+function formatApiError(service: string, status: number, body: string): string {
+  if (status === 402) {
+    return "You.com API credits have been used up. Please add credits in your You.com developer account, or contact the app owner.";
+  }
+  if (status === 401) {
+    return "Invalid You.com API key. Please check YOU_API_KEY in your environment.";
+  }
+  if (status === 403) {
+    return "You.com API access denied. Check your API key and account permissions.";
+  }
+  try {
+    const parsed = JSON.parse(body);
+    const msg = parsed?.error ?? parsed?.message ?? body;
+    return `You.com ${service} error (${status}): ${typeof msg === "string" ? msg : JSON.stringify(msg)}`;
+  } catch {
+    return `You.com ${service} error ${status}: ${body.slice(0, 200)}`;
+  }
+}
+
 export async function youSearch(
   query: string,
   options: {
@@ -37,7 +56,7 @@ export async function youSearch(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`You.com Search API error ${res.status}: ${text}`);
+    throw new Error(formatApiError("Search API", res.status, text));
   }
 
   return res.json();
@@ -58,7 +77,7 @@ export async function youContents(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`You.com Contents API error ${res.status}: ${text}`);
+    throw new Error(formatApiError("Contents API", res.status, text));
   }
 
   return res.json();
@@ -79,6 +98,7 @@ export async function youAgent(
     stream: false,
     tools: options.tools || [
       { type: "research", search_effort: "medium", report_verbosity: "medium" },
+      { type: "compute" },
     ],
     verbosity: options.verbosity || "medium",
     workflow_config: {
@@ -103,7 +123,7 @@ export async function youAgent(
 
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`You.com Agents API error ${res.status}: ${text}`);
+      throw new Error(formatApiError("Agents API", res.status, text));
     }
 
     return res.json();

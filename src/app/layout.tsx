@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { OnlineModeProvider } from "@/lib/online-mode-context";
 import AppShell from "@/components/AppShell";
 
 const geistSans = Geist({
@@ -18,7 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Remedy — AI Health Research Agent",
   description:
-    "Research medication interactions, supplement evidence, and wellness claims with AI-powered, citation-backed analysis. Powered by You.com APIs.",
+    "Understand, cite, and act with You.com. Ground health answers in live web data. Research Copilot + Live News Analyzer + Knowledge Copilot—citation-backed, real-time.",
   icons: {
     icon: "/remedy-logo.svg",
   },
@@ -36,9 +37,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ThemeProvider>
-          <AuthProvider>
-            <AppShell>{children}</AppShell>
-          </AuthProvider>
+          <OnlineModeProvider>
+            <AuthProvider>
+              <AppShell>{children}</AppShell>
+            </AuthProvider>
+          </OnlineModeProvider>
         </ThemeProvider>
       </body>
     </html>

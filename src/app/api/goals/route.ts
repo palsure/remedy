@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    if (request.headers.get("x-offline-mode") === "true") {
+      return NextResponse.json({ tips: [], offline: true });
+    }
     const { goalTitle, category } = await request.json();
 
     if (!goalTitle) {

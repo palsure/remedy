@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import type { HealthGoal, GoalTip, GoalCategory, GoalNotification } from "@/lib/types";
 import { generateId } from "@/lib/utils";
+import { useOnlineMode } from "@/lib/online-mode-context";
+import { cacheKeyGoalsTips, getCached, setCached, isCacheFresh } from "@/lib/api-cache";
 import GoalCard from "@/components/GoalCard";
 import NotificationToast from "@/components/NotificationToast";
 
@@ -43,6 +45,7 @@ const presetGoals: { title: string; category: GoalCategory; target: string }[] =
 ];
 
 export default function GoalsPage() {
+  const { mode, isOnline, refreshIntervalMs } = useOnlineMode();
   const [goals, setGoals] = useState<HealthGoal[]>([]);
   const [notifications, setNotifications] = useState<GoalNotification[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -93,20 +96,32 @@ export default function GoalsPage() {
 
   const fetchTipsAndNotify = useCallback(
     async (goal: HealthGoal) => {
-      try {
-        const res = await fetch("/api/goals", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            goalTitle: goal.title,
-            category: goal.category,
-          }),
-        });
-        const data = await res.json();
-        if (data.tips && data.tips.length > 0) {
-          const randomTip =
-            data.tips[Math.floor(Math.random() * data.tips.length)];
-          const notif: GoalNotification = {
+      const key = cacheKeyGoalsTips(goal.title, goal.category);
+      if (mode === "offline") {
+        const entry = getCached<{ tips: { text: string; source: string; sourceUrl: string }[] }>(key);
+        if (entry?.data?.tips?.length) {
+          const randomTip = entry.data.tips[Math.floor(Math.random() * entry.data.tips.length)];
+          setNotifications((prev) => [
+            {
+              id: generateId(),
+              goalId: goal.id,
+              goalTitle: goal.title,
+              tip: randomTip.text,
+              source: randomTip.source,
+              sourceUrl: randomTip.sourceUrl,
+              read: false,
+              createdAt: Date.now(),
+            },
+            ...prev,
+          ].slice(0, 20));
+        }
+        return;
+      }
+      const entry = getCached<{ tips: { text: string; source: string; sourceUrl: string }[] }>(key);
+      if (isCacheFresh(entry, refreshIntervalMs) && entry?.data?.tips?.length) {
+        const randomTip = entry.data.tips[Math.floor(Math.random() * entry.data.tips.length)];
+        setNotifications((prev) => [
+          {
             id: generateId(),
             goalId: goal.id,
             goalTitle: goal.title,
@@ -115,12 +130,44 @@ export default function GoalsPage() {
             sourceUrl: randomTip.sourceUrl,
             read: false,
             createdAt: Date.now(),
-          };
-          setNotifications((prev) => [notif, ...prev].slice(0, 20));
+          },
+          ...prev,
+        ].slice(0, 20));
+        return;
+      }
+      try {
+        const res = await fetch("/api/goals", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(isOnline ? {} : { "X-Offline-Mode": "true" }),
+          },
+          body: JSON.stringify({
+            goalTitle: goal.title,
+            category: goal.category,
+          }),
+        });
+        const data = await res.json();
+        if (data.tips && data.tips.length > 0) {
+          setCached(key, { tips: data.tips });
+          const randomTip = data.tips[Math.floor(Math.random() * data.tips.length)];
+          setNotifications((prev) => [
+            {
+              id: generateId(),
+              goalId: goal.id,
+              goalTitle: goal.title,
+              tip: randomTip.text,
+              source: randomTip.source,
+              sourceUrl: randomTip.sourceUrl,
+              read: false,
+              createdAt: Date.now(),
+            },
+            ...prev,
+          ].slice(0, 20));
         }
       } catch {}
     },
-    []
+    [mode, isOnline, refreshIntervalMs]
   );
 
   const addGoal = (title: string, category: GoalCategory, target: string) => {
@@ -148,29 +195,52 @@ export default function GoalsPage() {
 
   const fetchTipsForGoal = async (goalId: string, title: string, category: GoalCategory) => {
     setTipsLoadingId(goalId);
+    const key = cacheKeyGoalsTips(title, category);
+    const mapTips = (tips: { text: string; highlights?: string[]; source: string; sourceUrl: string }[]): GoalTip[] =>
+      tips.map((t) => ({
+        id: generateId(),
+        text: t.text,
+        highlights: t.highlights || [],
+        source: t.source,
+        sourceUrl: t.sourceUrl,
+        fetchedAt: Date.now(),
+      }));
+
+    if (mode === "offline") {
+      const entry = getCached<{ tips: { text: string; highlights?: string[]; source: string; sourceUrl: string }[] }>(key);
+      if (entry?.data?.tips) {
+        setGoals((prev) =>
+          prev.map((g) => (g.id === goalId ? { ...g, tips: mapTips(entry.data.tips) } : g))
+        );
+      }
+      setTipsLoadingId(null);
+      return;
+    }
+    const entry = getCached<{ tips: { text: string; highlights?: string[]; source: string; sourceUrl: string }[] }>(key);
+    if (isCacheFresh(entry, refreshIntervalMs) && entry?.data?.tips) {
+      setGoals((prev) =>
+        prev.map((g) => (g.id === goalId ? { ...g, tips: mapTips(entry.data.tips) } : g))
+      );
+      setTipsLoadingId(null);
+      return;
+    }
     try {
       const res = await fetch("/api/goals", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(isOnline ? {} : { "X-Offline-Mode": "true" }),
+        },
         body: JSON.stringify({ goalTitle: title, category }),
       });
       const data = await res.json();
       if (data.tips) {
-        const tips: GoalTip[] = data.tips.map(
-          (t: { text: string; highlights?: string[]; source: string; sourceUrl: string }) => ({
-            id: generateId(),
-            text: t.text,
-            highlights: t.highlights || [],
-            source: t.source,
-            sourceUrl: t.sourceUrl,
-            fetchedAt: Date.now(),
-          })
-        );
+        setCached(key, { tips: data.tips });
+        const tips: GoalTip[] = mapTips(data.tips);
         setGoals((prev) =>
           prev.map((g) => (g.id === goalId ? { ...g, tips } : g))
         );
 
-        // Also create a notification if notifications are enabled
         const goal = goals.find((g) => g.id === goalId);
         if (goal?.notificationsEnabled && tips.length > 0) {
           const notif: GoalNotification = {

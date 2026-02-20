@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Square } from "lucide-react";
-import type { ChatMessage, AgentStepData, SSEEvent } from "@/lib/types";
+import type { ChatMessage, AgentStepData, SSEEvent, HealthReport } from "@/lib/types";
 import { generateId } from "@/lib/utils";
+import { useOnlineMode } from "@/lib/online-mode-context";
+import { cacheKeyResearch, getCached, setCached, isCacheFresh } from "@/lib/api-cache";
 import MessageBubble from "./MessageBubble";
 import ResearchModeCards from "./ResearchModeCards";
 import SuggestedQueries from "./SuggestedQueries";
@@ -15,12 +17,28 @@ export interface ResearchEntry {
   analysis: string;
   safetyRating: string;
   evidenceLevel: string;
-  citations: { title: string; url: string; snippet: string }[];
+  riskScore?: number;
+  citations: {
+    title: string;
+    url: string;
+    snippet: string;
+    source_tier?: string;
+    doi?: string;
+    pubmed_id?: string;
+  }[];
   timestamp: number;
+  contraindicationAlerts?: { population: string; summary: string; source?: string }[];
+  conflictingEvidence?: { claim_a: string; claim_b: string; source_a?: string; source_b?: string }[];
+  rejectedSources?: { title: string; url: string; reason: string }[];
+  queryLog?: string[];
+  agentRolesUsed?: string[];
+  disclaimerExtras?: string[];
+  creditsUnavailable?: boolean;
 }
 
 export const HISTORY_KEY = "remedy-research-history";
 export const HISTORY_EVENT = "remedy-history-updated";
+export const RESEARCH_RESET_EVENT = "remedy-research-reset";
 
 function loadHistory(): ResearchEntry[] {
   if (typeof window === "undefined") return [];
@@ -38,6 +56,7 @@ function saveAndBroadcast(entry: ResearchEntry) {
 }
 
 export default function ChatInterface() {
+  const { mode, isOnline, refreshIntervalMs } = useOnlineMode();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +65,8 @@ export default function ChatInterface() {
   const abortRef = useRef<AbortController | null>(null);
   const pendingQuestionRef = useRef<string>("");
   const savedRef = useRef(false);
+  const isOnlineRef = useRef(isOnline);
+  isOnlineRef.current = isOnline;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,6 +75,20 @@ export default function ChatInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    const onReset = () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setMessages([]);
+      setInput("");
+      setIsLoading(false);
+      savedRef.current = false;
+      pendingQuestionRef.current = "";
+    };
+    window.addEventListener(RESEARCH_RESET_EVENT, onReset);
+    return () => window.removeEventListener(RESEARCH_RESET_EVENT, onReset);
+  }, []);
 
   const handleSubmit = async (text?: string) => {
     const question = (text || input).trim();
@@ -82,6 +117,58 @@ export default function ChatInterface() {
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setIsLoading(true);
 
+    const cacheKey = cacheKeyResearch(question);
+    const cachedEntry = getCached<HealthReport>(cacheKey);
+    const cachedReport = cachedEntry?.data;
+    const cacheIsFresh = isCacheFresh(cachedEntry, refreshIntervalMs);
+    // In Live mode: only use cache if it's a real report (not a credits-unavailable fallback), so Live actually calls the API when credits are available
+    const useCached =
+      (mode === "offline" && cachedReport) ||
+      (mode === "live" && cacheIsFresh && cachedReport && !cachedReport.credits_unavailable);
+
+    if (useCached && cachedReport) {
+      const report = cachedReport;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                steps: [{ id: "cached", type: "complete", content: "From cache", timestamp: Date.now() }],
+                report,
+              }
+            : m
+        )
+      );
+      savedRef.current = true;
+      saveAndBroadcast({
+        id: generateId(),
+        question,
+        summary: report.summary || "",
+        analysis: report.detailed_analysis || "",
+        safetyRating: report.safety_rating || "unknown",
+        evidenceLevel: report.evidence_level || "unknown",
+        riskScore: report.risk_score,
+        citations: (report.citations || []).map((c) => ({
+          title: c.title,
+          url: c.url,
+          snippet: c.snippet,
+          source_tier: c.source_tier,
+          doi: c.doi,
+          pubmed_id: c.pubmed_id,
+        })),
+        contraindicationAlerts: report.contraindication_alerts,
+        conflictingEvidence: report.conflicting_evidence,
+        rejectedSources: report.rejected_sources,
+        queryLog: report.query_log,
+        agentRolesUsed: report.agent_roles_used,
+        disclaimerExtras: report.disclaimer_extras,
+        creditsUnavailable: report.credits_unavailable,
+        timestamp: Date.now(),
+      });
+      setIsLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -92,7 +179,10 @@ export default function ChatInterface() {
     try {
       const res = await fetch("/api/research", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(isOnlineRef.current ? {} : { "X-Offline-Mode": "true" }),
+        },
         body: JSON.stringify({ question }),
         signal: controller.signal,
       });
@@ -259,6 +349,16 @@ export default function ChatInterface() {
             });
             break;
 
+          case "agent_role":
+            steps.push({
+              id: generateId(),
+              type: "agent_role",
+              content: `${event.role} active`,
+              role: event.role,
+              timestamp: Date.now(),
+            });
+            break;
+
           case "complete": {
             report = event.report;
             steps.push({
@@ -268,24 +368,39 @@ export default function ChatInterface() {
               timestamp: Date.now(),
             });
             const completedReport = report;
-            if (completedReport && !savedRef.current) {
-              savedRef.current = true;
-              setTimeout(() => {
-                saveAndBroadcast({
+            if (completedReport) {
+              const q = pendingQuestionRef.current || "Research query";
+              setCached(cacheKeyResearch(q), completedReport);
+              if (!savedRef.current) {
+                savedRef.current = true;
+                setTimeout(() => {
+                  saveAndBroadcast({
                   id: generateId(),
                   question: pendingQuestionRef.current || "Research query",
                   summary: completedReport.summary || "",
                   analysis: completedReport.detailed_analysis || "",
                   safetyRating: completedReport.safety_rating || "unknown",
                   evidenceLevel: completedReport.evidence_level || "unknown",
+                  riskScore: completedReport.risk_score,
                   citations: (completedReport.citations || []).map((c) => ({
                     title: c.title,
                     url: c.url,
                     snippet: c.snippet,
+                    source_tier: c.source_tier,
+                    doi: c.doi,
+                    pubmed_id: c.pubmed_id,
                   })),
+                  contraindicationAlerts: completedReport.contraindication_alerts,
+                  conflictingEvidence: completedReport.conflicting_evidence,
+                  rejectedSources: completedReport.rejected_sources,
+                  queryLog: completedReport.query_log,
+                  agentRolesUsed: completedReport.agent_roles_used,
+                  disclaimerExtras: completedReport.disclaimer_extras,
+                  creditsUnavailable: completedReport.credits_unavailable,
                   timestamp: Date.now(),
                 });
               }, 0);
+              }
             }
             break;
           }

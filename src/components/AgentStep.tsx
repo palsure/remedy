@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Globe,
+  Shield,
 } from "lucide-react";
 import type { AgentStepData } from "@/lib/types";
 import SourceCard from "./SourceCard";
@@ -41,6 +42,11 @@ const stepConfig: Record<
     icon: Brain,
     color: "text-purple-500",
     label: "Analyzing",
+  },
+  agent_role: {
+    icon: Shield,
+    color: "text-amber-500",
+    label: "Pipeline",
   },
   complete: {
     icon: CheckCircle2,
@@ -75,11 +81,13 @@ export default function AgentStep({ step }: { step: AgentStepData }) {
       </div>
       <div className="min-w-0 flex-1 pb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-          {cfg.label}
+          {step.type === "agent_role" && step.role ? step.role : cfg.label}
         </p>
-        <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-          {step.content}
-        </p>
+        {step.type !== "agent_role" && (
+          <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+            {step.content}
+          </p>
+        )}
         {step.sources && step.sources.length > 0 && (
           <div className="mt-2 grid gap-2">
             {step.sources.slice(0, 4).map((source, i) => (

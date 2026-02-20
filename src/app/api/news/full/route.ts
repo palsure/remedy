@@ -41,6 +41,9 @@ function extractDomain(url: string): string {
 
 export async function GET(req: NextRequest) {
   try {
+    if (req.headers.get("x-offline-mode") === "true") {
+      return NextResponse.json({ articles: [], summary: "", offline: true });
+    }
     if (!process.env.YOU_API_KEY) {
       return NextResponse.json(
         { error: "YOU_API_KEY is not configured" },
@@ -59,6 +62,7 @@ export async function GET(req: NextRequest) {
     const results = await youSearch(query, {
       count: 20,
       freshness,
+      livecrawl: "news",
     });
 
     const articles: RawArticle[] = [];

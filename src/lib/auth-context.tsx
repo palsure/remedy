@@ -23,6 +23,7 @@ interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => { success: boolean; error?: string };
+  register: (email: string, password: string, name: string) => { success: boolean; error?: string };
   logout: () => void;
 }
 
@@ -30,10 +31,21 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   isLoading: true,
   login: () => ({ success: false }),
+  register: () => ({ success: false }),
   logout: () => {},
 });
 
 const STORAGE_KEY = "remedy-auth";
+const USERS_KEY = "remedy-users";
+
+function getStoredUsers(): Record<string, { password: string; name: string }> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(USERS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -50,15 +62,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback((email: string, password: string) => {
+    const normalizedEmail = email.toLowerCase().trim();
     if (
-      email.toLowerCase() === DEMO_CREDENTIALS.email &&
+      normalizedEmail === DEMO_CREDENTIALS.email &&
       password === DEMO_CREDENTIALS.password
     ) {
       setUser(DEMO_USER);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(DEMO_USER));
       return { success: true };
     }
-    return { success: false, error: "Invalid credentials. Use the demo account below." };
+    const users = getStoredUsers();
+    const account = users[normalizedEmail];
+    if (account && account.password === password) {
+      const user: User = {
+        email: normalizedEmail,
+        name: account.name,
+        avatar: account.name.slice(0, 2).toUpperCase(),
+      };
+      setUser(user);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      return { success: true };
+    }
+    return { success: false, error: "Invalid email or password." };
+  }, []);
+
+  const register = useCallback((email: string, password: string, name: string) => {
+    const normalizedEmail = email.toLowerCase().trim();
+    const trimmedName = name.trim();
+    if (!trimmedName) return { success: false, error: "Name is required." };
+    if (!normalizedEmail) return { success: false, error: "Email is required." };
+    if (password.length < 6) return { success: false, error: "Password must be at least 6 characters." };
+    const users = getStoredUsers();
+    if (users[normalizedEmail]) return { success: false, error: "An account with this email already exists." };
+    users[normalizedEmail] = { password, name: trimmedName };
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    const user: User = {
+      email: normalizedEmail,
+      name: trimmedName,
+      avatar: trimmedName.slice(0, 2).toUpperCase(),
+    };
+    setUser(user);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    return { success: true };
   }, []);
 
   const logout = useCallback(() => {
@@ -67,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

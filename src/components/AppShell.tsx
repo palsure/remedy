@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import Header from "./Header";
 import Disclaimer from "./Disclaimer";
 
-const PUBLIC_ROUTES = ["/", "/login"];
+const PUBLIC_ROUTES = ["/", "/login", "/register"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -29,8 +29,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Login page renders its own full-screen layout
-  if (pathname === "/login" && !user) {
+  // Login and Register pages render their own full-screen layout
+  if ((pathname === "/login" || pathname === "/register") && !user) {
     return <>{children}</>;
   }
 
